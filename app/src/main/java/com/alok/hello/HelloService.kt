@@ -53,6 +53,15 @@ class HelloService : AccessibilityService() {
         bubble?.collapse()
     }
 
+    fun setSymbol(sym: String) {
+        bubble?.setSymbol(sym)
+    }
+
+    /** Shows text in the bubble's panel (used by the agent to report or ask). */
+    fun showInBubble(text: String) {
+        bubble?.showResult(text)
+    }
+
     private fun state(symbol: String) {
         bubble?.setSymbol(symbol)
         if (symbol != "H") handler.postDelayed({ bubble?.setSymbol("H") }, 6000)
@@ -231,15 +240,16 @@ class HelloService : AccessibilityService() {
         return null
     }
 
-    private fun clickNode(start: AccessibilityNodeInfo) {
+    fun clickNode(start: AccessibilityNodeInfo): Boolean {
         var n: AccessibilityNodeInfo? = start
         while (n != null) {
-            if (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+            if (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
             n = n.parent
         }
+        return false
     }
 
-    private fun setText(edit: AccessibilityNodeInfo, msg: String): Boolean {
+    fun setText(edit: AccessibilityNodeInfo, msg: String): Boolean {
         edit.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val args = Bundle()
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, msg)

@@ -11,6 +11,9 @@ object Commands {
         "• msg <text>  → default message badlo\n" +
         "• youtube kholo | chrome kholo | open <app>\n" +
         "• youtube search physics rapid revision\n" +
+        "• ai <kaam>  → smart agent, khud screen dekh ke karega\n" +
+        "   (ya seedha lamba kaam likho, jaise: claude kholo, logout karo...)\n" +
+        "• stop  → agent roko\n" +
         "• list | cancel | offset 3"
 
     private val openTriggers = setOf(
@@ -69,13 +72,11 @@ object Commands {
             }
         }
 
-        val name = words.filterNot { it in openTriggers || it in fillers }.joinToString(" ")
-        if (name.isEmpty()) return false
-        val app = findApp(s, name)
-        if (app == null) {
-            reply("'$name' naam ka app nahi mila.")
-            return true
-        }
+        val nameWords = words.filterNot { it in openTriggers || it in fillers }
+        // Long sentences are real tasks for the smart agent, not "open <app>".
+        if (nameWords.isEmpty() || nameWords.size > 3) return false
+        val name = nameWords.joinToString(" ")
+        val app = findApp(s, name) ?: return false
         s.collapseBubble()
         val i = android.content.Intent(android.content.Intent.ACTION_MAIN)
             .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
@@ -85,6 +86,24 @@ object Commands {
         return true
     }
 
+    /** Used by the agent's open_app action. */
+    fun openApp(s: HelloService, name: String): Boolean {
+        val app = findApp(s, name.trim().lowercase()) ?: return false
+        val i = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            .setClassName(app.activityInfo.packageName, app.activityInfo.name)
+        return launch(s, i)
+    }
+
+    private fun startAgent(s: HelloService, goal: String, reply: (String) -> Unit) {
+        if (!Agent.configured(s)) {
+            reply("Smart agent ke liye Hello app mein 'Agent URL' aur 'Agent token' bharo.")
+            return
+        }
+        reply("Samajh gaya, kaam shuru: $goal")
+        Agent.start(s, goal) { s.showInBubble(it) }
+    }
+
     fun handle(s: HelloService, raw: String, reply: (String) -> Unit) {
         val text = raw.trim()
         if (text.isEmpty()) {
@@ -92,13 +111,33 @@ object Commands {
             return
         }
         val low = text.lowercase()
+
+        // While the agent is busy, the bubble only understands stop / answers.
+        if (Agent.running) {
+            if (low == "stop" || low == "ruko" || low == "band") {
+                Agent.stop("user ne roka")
+                reply("Agent roka.")
+            } else if (Agent.waitingForUser) {
+                Agent.answer(text)
+                reply("Theek hai, aage badh raha hoon…")
+                s.collapseBubble()
+            } else {
+                reply("Agent chal raha hai. Rokne ke liye 'stop' likho.")
+            }
+            return
+        }
         val msgIdx = low.indexOf("msg:")
         val customMsg = if (msgIdx >= 0) text.substring(msgIdx + 4).trim().ifEmpty { null } else null
         val head = if (msgIdx >= 0) text.substring(0, msgIdx).trim() else text
         val headLow = head.lowercase()
 
         when {
-            headLow == "scan" || headLow.contains("screen") -> s.scanThen(reply)
+            headLow == "scan" -> s.scanThen(reply)
+
+            headLow == "stop" -> reply("Abhi kuch chal nahi raha.")
+
+            headLow.startsWith("ai ") || headLow.startsWith("kaam ") ->
+                startAgent(s, head.substringAfter(' ').trim(), reply)
 
             headLow == "now" || headLow == "abhi" -> {
                 val t = Store.add(s, customMsg ?: Store.message(s), System.currentTimeMillis())
@@ -141,9 +180,16 @@ object Commands {
 
             else -> {
                 if (openCommand(s, headLow, reply)) return
+                // Short time-like input ("limit 2:30 pm", "in 3h") is the old fast path.
                 val at = ResetTimeParser.parse(head)
-                if (at != null) reply(s.scheduleAt(at, customMsg))
-                else reply("Samajh nahi aaya.\n$HELP")
+                val shortInput = head.split(Regex("\\s+")).size <= 6
+                if (at != null && shortInput) {
+                    reply(s.scheduleAt(at, customMsg))
+                } else if (Agent.configured(s)) {
+                    startAgent(s, head, reply)
+                } else {
+                    reply("Samajh nahi aaya.\n$HELP")
+                }
             }
         }
     }

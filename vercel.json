@@ -1,1 +1,8 @@
-{ "framework": null, "buildCommand": "", "outputDirectory": "web" }
+{
+  "framework": null,
+  "buildCommand": "",
+  "outputDirectory": "web",
+  "functions": {
+    "api/agent.js": { "maxDuration": 30 }
+  }
+}

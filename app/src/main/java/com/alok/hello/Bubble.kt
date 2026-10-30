@@ -136,7 +136,7 @@ class Bubble(private val s: HelloService) {
         row.addView(btn("Send") { run() })
         row.addView(btn("Scan") { quick("scan") })
         row.addView(btn("Now") { quick("now") })
-        row.addView(btn("List") { quick("list") })
+        row.addView(btn("Stop") { quick("stop") })
         row.addView(btn("✕") { collapse() })
         panel.addView(row)
     }

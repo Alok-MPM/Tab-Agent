@@ -34,6 +34,8 @@ class MainActivity : Activity() {
     private lateinit var logView: TextView
     private lateinit var timeInput: EditText
     private lateinit var msgInput: EditText
+    private lateinit var agentUrlInput: EditText
+    private lateinit var agentTokenInput: EditText
     private val ui = Handler(Looper.getMainLooper())
     private var resumed = false
 
@@ -130,6 +132,15 @@ class MainActivity : Activity() {
         root.addView(button("Schedule karo (reset + ${Store.offsetMin(this)} min)") { schedule() })
         root.addView(button("Test now (abhi Claude mein bhejo)") { testNow() })
 
+        val hAgent = text("Smart agent (Gemini):", 15f, accent, true)
+        hAgent.setPadding(0, dp(20), 0, 0)
+        root.addView(hAgent)
+        root.addView(text("Bubble mein 'ai <kaam>' ya seedha lamba kaam likho. Vercel pe /api/agent chahiye.", 12f, dim))
+        agentUrlInput = field("Agent URL", Store.agentUrl(this))
+        root.addView(agentUrlInput)
+        agentTokenInput = field("Agent token (Vercel AGENT_TOKEN wala)", Store.agentToken(this))
+        root.addView(agentTokenInput)
+
         val h3 = text("Tasks:", 15f, accent, true)
         h3.setPadding(0, dp(20), 0, 0)
         root.addView(h3)
@@ -170,6 +181,8 @@ class MainActivity : Activity() {
         resumed = false
         val m = msgInput.text.toString().trim()
         if (m.isNotEmpty()) Store.setMessage(this, m)
+        Store.setAgentUrl(this, agentUrlInput.text.toString())
+        Store.setAgentToken(this, agentTokenInput.text.toString())
     }
 
     private fun schedule() {

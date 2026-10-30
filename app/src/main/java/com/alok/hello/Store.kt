@@ -69,6 +69,14 @@ object Store {
     fun message(c: Context): String = p(c).getString("msg", DEFAULT_MSG) ?: DEFAULT_MSG
     fun setMessage(c: Context, m: String) = p(c).edit().putString("msg", m).apply()
 
+    fun agentUrl(c: Context): String =
+        p(c).getString("agent_url", "https://samsung-tab-agent.vercel.app/api/agent") ?: ""
+
+    fun setAgentUrl(c: Context, v: String) = p(c).edit().putString("agent_url", v.trim()).apply()
+
+    fun agentToken(c: Context): String = p(c).getString("agent_token", "") ?: ""
+    fun setAgentToken(c: Context, v: String) = p(c).edit().putString("agent_token", v.trim()).apply()
+
     fun offsetMin(c: Context): Int = p(c).getInt("offset", 2)
     fun setOffset(c: Context, m: Int) = p(c).edit().putInt("offset", m).apply()
 

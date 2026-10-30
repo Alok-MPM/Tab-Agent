@@ -34,6 +34,16 @@ Direct APK link: `https://github.com/Alok-MPM/Tab-Agent/releases/latest/download
 | `offset 3` | send 3 min after reset instead of 2 |
 | `list`, `cancel` | see or clear pending tasks |
 
+## Smart agent (Phase 2)
+
+Type a goal in the bubble (`ai claude kholo, logout karo, Google se login karo`) or just write a long sentence.
+The app reads the screen as a numbered list, `/api/agent` (Vercel) asks Gemini for the next action, the app does it
+(click / type / scroll / back / open app) and repeats, max 25 steps. It never types passwords, OTPs or card details:
+it pauses and asks you in the bubble. `stop` ends it. Logic lives on Vercel, so prompt changes need no APK reinstall.
+
+Vercel env vars: `AGENT_TOKEN` (random string, same value in the app), `GEMINI_API_KEY`, optional `GEMINI_MODEL`.
+Each step = 1 Gemini request, so the free daily quota limits how many steps you get.
+
 ## Notes
 
 - Tasks are stored on disk and re-armed after reboot or update.
