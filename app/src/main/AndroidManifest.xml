@@ -11,6 +11,11 @@
     <!-- Android 11+ package visibility: lets us find and launch the Claude app -->
     <queries>
         <package android:name="com.anthropic.claude" />
+        <package android:name="com.google.android.youtube" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
