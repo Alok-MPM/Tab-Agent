@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello Agent</title>
+<style>
+  :root { --bg:#0f1117; --card:#171a24; --fg:#edeff7; --dim:#9aa0b8; --accent:#6c5ce7; --accent2:#a99bff; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; padding:16px;
+         background: radial-gradient(1200px 600px at 80% -10%, #2a2160 0%, var(--bg) 60%);
+         color:var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  main { width:100%; max-width:560px; background:var(--card); border:1px solid #2a2f45; border-radius:22px; padding:28px; }
+  .logo { width:64px; height:64px; border-radius:50%; background:var(--accent); display:grid; place-items:center;
+          font-size:34px; font-weight:800; margin-bottom:14px; }
+  h1 { margin:0 0 4px; font-size:28px; }
+  p.sub { margin:0 0 22px; color:var(--dim); }
+  a.btn { display:block; text-align:center; padding:16px; border-radius:14px; background:var(--accent); color:#fff;
+          font-weight:700; font-size:18px; text-decoration:none; }
+  a.btn:active { transform:scale(.99); }
+  .meta { margin-top:10px; color:var(--dim); font-size:13px; text-align:center; min-height:18px; }
+  h2 { font-size:15px; color:var(--accent2); margin:26px 0 8px; }
+  ol { padding-left:20px; margin:0; color:var(--fg); line-height:1.6; font-size:14.5px; }
+  code { background:#0f1117; padding:1px 6px; border-radius:6px; color:var(--accent2); }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">H</div>
+  <h1>Hello</h1>
+  <p class="sub">Tab agent: Claude ki limit reset hote hi "kaam continue karo" khud bhej deta hai.</p>
+
+  <a class="btn" id="dl" href="https://github.com/Alok-MPM/Tab-Agent/releases/latest/download/Hello.apk">Download APK</a>
+  <div class="meta" id="meta">Latest build check ho raha hai…</div>
+
+  <h2>Install kaise karein</h2>
+  <ol>
+    <li>APK download karo aur kholo, "Install unknown apps" allow karo.</li>
+    <li>Hello app kholo, upar ke 4 setup buttons ek ek karke ✅ karo.</li>
+    <li>Accessibility grey ho to: App info → ⋮ → <code>Allow restricted settings</code>.</li>
+    <li>Claude mein limit lage to screen pe H bubble dabao, <code>scan</code> likho ya <code>limit 2:30 pm</code>.</li>
+  </ol>
+</main>
+<script>
+  fetch("https://api.github.com/repos/Alok-MPM/Tab-Agent/releases/tags/latest")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (j) {
+      var a = (j.assets || [])[0];
+      var d = new Date(j.published_at).toLocaleString();
+      document.getElementById("meta").textContent =
+        j.name + " · " + d + (a ? " · " + (a.size / 1048576).toFixed(1) + " MB" : "");
+    })
+    .catch(function () {
+      document.getElementById("meta").textContent = "Abhi koi build nahi mila. Pehle GitHub Actions chalne do.";
+    });
+</script>
+</body>
+</html>

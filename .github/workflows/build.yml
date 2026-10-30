@@ -1,0 +1,51 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["web/**", "README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Decode signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/hello.keystore"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/hello.keystore" >> "$GITHUB_ENV"
+          else
+            echo "No KEYSTORE_B64 secret: APK will be debug-signed (updates may need uninstall)."
+          fi
+
+      - name: Build release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Publish rolling "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk Hello.apk
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest Hello.apk \
+            --title "Hello APK (build ${{ github.run_number }})" \
+            --notes "Auto-built from commit ${GITHUB_SHA::7}. Install Hello.apk on the tablet."
