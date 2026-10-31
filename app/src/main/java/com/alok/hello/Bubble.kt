@@ -11,19 +11,25 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Floating helper: a small draggable "H" bubble. Tap it to open a panel where you can type a command.
- * Uses TYPE_ACCESSIBILITY_OVERLAY, so it needs no extra overlay permission and never blocks other apps
- * beyond its own small area.
+ * Floating helper: a small draggable "H" bubble. Tap it to open a panel at the TOP of the screen.
+ *
+ * Keyboard rules (this fixes the "keyboard hides buttons / back and home stop working" bug):
+ *  - The panel is NOT focusable by default, so it never grabs the keyboard or the back/home keys.
+ *  - Only when you tap the text box does it become focusable and show the keyboard.
+ *  - Tapping anywhere outside, Send, or the X turns focus off again and hides the keyboard.
+ *  - The panel sits at the top, so the keyboard can never cover it.
  */
 class Bubble(private val s: HelloService) {
 
     private val wm = s.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val imm = s.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     private val d get() = s.resources.displayMetrics
     private fun dp(v: Int) = (v * d.density).toInt()
 
@@ -46,14 +52,19 @@ class Bubble(private val s: HelloService) {
         y = dp(180)
     }
 
+    private val panelIdleFlags =
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+
     private val panelLp = WindowManager.LayoutParams(
         dp(340), WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+        panelIdleFlags,
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.TOP or Gravity.START
-        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
     }
 
     init {
@@ -108,6 +119,11 @@ class Bubble(private val s: HelloService) {
             setColor(Color.parseColor("#F2141722"))
             setStroke(dp(1), Color.parseColor("#6C5CE7"))
         }
+        // Tap anywhere outside the panel: stop typing, hide keyboard, give back/home to the real app.
+        panel.setOnTouchListener { _, e ->
+            if (e.action == MotionEvent.ACTION_OUTSIDE) disableTyping()
+            false
+        }
 
         val title = TextView(s)
         title.text = "Hello"
@@ -118,10 +134,12 @@ class Bubble(private val s: HelloService) {
         out.text = Commands.HELP
         out.setTextColor(Color.WHITE)
         out.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+        out.maxLines = 9
+        out.ellipsize = android.text.TextUtils.TruncateAt.END
         out.setPadding(0, dp(6), 0, dp(8))
         panel.addView(out)
 
-        input.hint = "Command likho… (limit 2:30 pm)"
+        input.hint = "Yahan dabao, phir command likho…"
         input.setHintTextColor(Color.parseColor("#8A8FA3"))
         input.setTextColor(Color.WHITE)
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
@@ -129,6 +147,12 @@ class Bubble(private val s: HelloService) {
         input.maxLines = 4
         input.imeOptions = EditorInfo.IME_ACTION_SEND
         input.setOnEditorActionListener { _, _, _ -> run(); true }
+        input.setOnTouchListener { _, e ->
+            if (e.action == MotionEvent.ACTION_DOWN) {
+                enableTyping()
+                true
+            } else false
+        }
         panel.addView(input)
 
         val row = LinearLayout(s)
@@ -153,48 +177,105 @@ class Bubble(private val s: HelloService) {
         return b
     }
 
+    // ---------- keyboard / focus ----------
+
+    private fun enableTyping() {
+        if (!panelShown) return
+        panelLp.flags = panelLp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        safeUpdate(panel, panelLp)
+        input.post {
+            input.requestFocus()
+            try {
+                imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun disableTyping() {
+        if (!panelShown) return
+        try {
+            imm.hideSoftInputFromWindow(input.windowToken, 0)
+        } catch (_: Exception) {
+        }
+        input.clearFocus()
+        panelLp.flags = panelLp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        safeUpdate(panel, panelLp)
+    }
+
+    // ---------- commands ----------
+
     private fun run() {
         val cmd = input.text.toString()
         input.setText("")
+        disableTyping()
         out.text = "…"
         Commands.handle(s, cmd) { showResult(it) }
     }
 
     private fun quick(cmd: String) {
+        disableTyping()
         out.text = "…"
         Commands.handle(s, cmd) { showResult(it) }
     }
 
     private fun safeUpdate(v: View, lp: WindowManager.LayoutParams) {
-        try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
+        try {
+            wm.updateViewLayout(v, lp)
+        } catch (_: Exception) {
+        }
     }
+
+    // ---------- show / hide ----------
 
     fun show() {
         if (iconShown) return
-        try { wm.addView(icon, iconLp); iconShown = true } catch (_: Exception) {}
+        try {
+            wm.addView(icon, iconLp); iconShown = true
+        } catch (_: Exception) {
+        }
     }
 
     fun hide() {
         collapse()
         if (iconShown) {
-            try { wm.removeView(icon) } catch (_: Exception) {}
+            try {
+                wm.removeView(icon)
+            } catch (_: Exception) {
+            }
             iconShown = false
         }
     }
 
-    private fun toggle() { if (panelShown) collapse() else expand() }
+    private fun toggle() {
+        if (panelShown) collapse() else expand()
+    }
 
     fun expand() {
         if (panelShown) return
-        val w = dp(340)
-        panelLp.x = (iconLp.x - w + dp(52)).coerceIn(0, maxOf(0, d.widthPixels - w))
-        panelLp.y = (iconLp.y + dp(60)).coerceAtMost(maxOf(0, d.heightPixels - dp(320)))
-        try { wm.addView(panel, panelLp); panelShown = true } catch (_: Exception) {}
+        val w = minOf(dp(340), d.widthPixels - dp(24))
+        panelLp.width = w
+        // Top-right, under the status bar: the keyboard comes from the bottom and can never cover this.
+        panelLp.x = maxOf(0, d.widthPixels - w - dp(12))
+        panelLp.y = dp(48)
+        panelLp.flags = panelIdleFlags
+        try {
+            wm.addView(panel, panelLp); panelShown = true
+        } catch (_: Exception) {
+        }
     }
 
     fun collapse() {
         if (!panelShown) return
-        try { wm.removeView(panel) } catch (_: Exception) {}
+        try {
+            imm.hideSoftInputFromWindow(input.windowToken, 0)
+        } catch (_: Exception) {
+        }
+        input.clearFocus()
+        try {
+            wm.removeView(panel)
+        } catch (_: Exception) {
+        }
         panelShown = false
     }
 
@@ -203,5 +284,7 @@ class Bubble(private val s: HelloService) {
         expand()
     }
 
-    fun setSymbol(sym: String) { icon.text = sym }
+    fun setSymbol(sym: String) {
+        icon.text = sym
+    }
 }
