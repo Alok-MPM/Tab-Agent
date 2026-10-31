@@ -3,9 +3,44 @@
 // Env vars (Vercel -> Settings -> Environment Variables):
 //   GEMINI_API_KEY  your Gemini key (never ships in the APK)
 //   AGENT_TOKEN     long random string; the app sends it so strangers can't burn your quota
-//   GEMINI_MODEL    optional, default gemini-2.5-flash
+//   GEMINI_MODEL    optional; forces one model. Otherwise several are tried automatically
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Tried in order; the first that works is remembered. Set GEMINI_MODEL in Vercel to force one.
+const CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+].filter(Boolean);
+let workingModel = null;
+const BASE = "https://generativelanguage.googleapis.com/v1beta/";
+const gHeaders = () => ({
+  "Content-Type": "application/json",
+  "x-goog-api-key": process.env.GEMINI_API_KEY,
+});
+
+function generate(model, payload) {
+  return fetch(`${BASE}models/${model}:generateContent`, {
+    method: "POST",
+    headers: gHeaders(),
+    body: JSON.stringify(payload),
+  });
+}
+
+// Last resort: ask Google which models this key can use and take the newest Flash one.
+async function discoverModel() {
+  const r = await fetch(`${BASE}models?pageSize=200`, { headers: gHeaders() });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const names = (j.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map((m) => String(m.name).replace(/^models\//, ""))
+    .filter((n) => /^gemini-.*flash/.test(n) && !/(image|tts|live|audio|embed|vision|robotics|computer)/.test(n));
+  names.sort().reverse();
+  return names[0] || null;
+}
 const MAX_STEPS = 25;
 
 const SYSTEM = `You are "Hello", an agent that operates an Android tablet (Samsung, One UI) for its owner Alok.
@@ -79,31 +114,44 @@ module.exports = async (req, res) => {
     `PREVIOUS ACTIONS (oldest first):\n${history.length ? history.join("\n") : "(none yet)"}\n\n` +
     `CURRENT SCREEN:\n${screen}`;
 
-  let r;
+  const payload = {
+    systemInstruction: { parts: [{ text: SYSTEM }] },
+    contents: [{ role: "user", parts: [{ text: userText }] }],
+    generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
+  };
+
+  // Try the remembered model, else each candidate; a 404 means "model not available", so move on.
+  const order = workingModel ? [workingModel] : CANDIDATES.slice();
+  let r = null;
+  let used = null;
+  let last404 = "";
   try {
-    r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: "user", parts: [{ text: userText }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
-        }),
+    for (let i = 0; i <= order.length; i++) {
+      let model = order[i];
+      if (i === order.length) model = await discoverModel();
+      if (!model) break;
+      const resp = await generate(model, payload);
+      if (resp.status === 404) {
+        last404 = (await resp.text()).slice(0, 200);
+        workingModel = null;
+        continue;
       }
-    );
+      r = resp;
+      used = model;
+      break;
+    }
   } catch (e) {
     return res.status(502).json({ error: "gemini unreachable: " + e.message });
+  }
+  if (!r) {
+    return res.status(502).json({ error: "koi Gemini model nahi mila. Last: " + last404 });
   }
 
   if (!r.ok) {
     const t = (await r.text()).slice(0, 300);
-    return res.status(r.status === 429 ? 429 : 502).json({ error: "gemini " + r.status + ": " + t });
+    return res.status(r.status === 429 ? 429 : 502).json({ error: "gemini " + r.status + " (" + used + "): " + t });
   }
+  workingModel = used;
 
   const j = await r.json();
   const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
